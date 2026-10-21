@@ -1,0 +1,8 @@
+{
+  "crons": [
+    { "path": "/api/cron/cleanup", "schedule": "0 3 * * *" },
+    { "path": "/api/cron/store", "schedule": "30 5 * * *" },
+    { "path": "/api/cron/growth", "schedule": "15 5 * * *" },
+    { "path": "/api/cron/subscriptions", "schedule": "0 6 * * *" }
+  ]
+}

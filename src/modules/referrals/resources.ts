@@ -1,0 +1,38 @@
+import { defineResource } from '@/lib/admin/resource';
+
+export const referralsResource = defineResource({
+  id: 'referrals',
+  label: 'Referral',
+  labelPlural: 'Referrals',
+  description: 'Orders placed with a customer’s referral code: who shared it, who used it, and whether the reward was given.',
+  module: 'referrals',
+  area: 'marketing',
+  model: 'referral',
+  entity: 'referral',
+  nav: { group: 'Marketing' },
+  titleField: 'code',
+  readOnly: true,
+  creatable: false,
+  deletable: false,
+  duplicate: false,
+  fields: [
+    { name: 'code', label: 'Code', type: 'text', readOnly: true, info: 'The referral code used.' },
+    { name: 'referrerEmail', label: 'Shared by', type: 'text', readOnly: true, info: 'The customer who owns the code.' },
+    { name: 'friendEmail', label: 'Used by', type: 'text', readOnly: true, info: 'The friend who ordered.' },
+    { name: 'status', label: 'Status', type: 'text', readOnly: true, info: 'Waiting for payment, rewarded or cancelled.' },
+    { name: 'discount', label: 'Friend saved', type: 'money', readOnly: true, info: 'What the friend’s code took off.' },
+  ],
+  columns: [
+    { field: 'code', label: 'Code', kind: 'title', sortable: true },
+    { field: 'referrerEmail', label: 'Shared by', kind: 'text', sortable: true },
+    { field: 'friendEmail', label: 'Used by', kind: 'text', sortable: true },
+    { field: 'status', label: 'Status', kind: 'text', sortable: true },
+    { field: 'discount', label: 'Friend saved', kind: 'money', sortable: true },
+    { field: 'createdAt', label: 'When', kind: 'date', sortable: true },
+    { field: 'note', label: 'Note', kind: 'text', hiddenByDefault: true },
+  ],
+  searchFields: ['code', 'referrerEmail', 'friendEmail'],
+  filters: [{ field: 'status', label: 'Status', options: [{ value: 'pending', label: 'Waiting for payment' }, { value: 'rewarded', label: 'Rewarded' }, { value: 'void', label: 'Cancelled' }] }],
+  defaultSort: { field: 'createdAt', dir: 'desc' },
+  csv: { columns: ['code', 'referrerEmail', 'friendEmail', 'status', 'discount', 'createdAt'] },
+});

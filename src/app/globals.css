@@ -1,0 +1,228 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens. The root layout prints the Brand settings as CSS variables on html:root, which win over
+ * these fallbacks (the Blueprint preset). Components use token classes only (bg-surface, text-ink,
+ * rounded-card, text-h2...), never raw colours or font names; a lint rule enforces it.
+ */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+:root {
+  --primary: #1d5bd8;
+  --primary-ink: #ffffff;
+  --secondary: #0e2a5c;
+  --accent: #f2a93b;
+  --success: #1f7a45;
+  --warning: #9a5b00;
+  --danger: #c2362b;
+  --base: #f5f7fb;
+  --surface: #ffffff;
+  --raised: #eef2f9;
+  --line: #d6deec;
+  --ink: #0b1a33;
+  --body: #2b3a55;
+  --muted: #56637c;
+
+  --r-card: 14px;
+  --r-button: 10px;
+  --r-input: 8px;
+  --border-width: 1px;
+  --container-width: 72rem;
+  --sh-card: 0 1px 2px rgb(0 0 0 / 0.05), 0 8px 24px -8px rgb(0 0 0 / 0.12);
+  --motion-speed: 250ms;
+  --heading-tracking: -0.01em;
+
+  --font-display-stack: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-body-stack: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono-stack: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  --fs-base: 16px;
+  --fs-h1: clamp(34px, calc(34px + 15 * ((100vw - 360px) / 920)), 49px);
+  --fs-h2: clamp(29px, calc(29px + 10 * ((100vw - 360px) / 920)), 39px);
+  --fs-h3: clamp(25px, calc(25px + 6 * ((100vw - 360px) / 920)), 31px);
+  --fs-h4: clamp(21px, calc(21px + 4 * ((100vw - 360px) / 920)), 25px);
+  --fs-h5: 20px;
+  --fs-h6: 16px;
+
+  color-scheme: light;
+}
+
+[data-theme='dark'] {
+  --primary: #5b93ff;
+  --primary-ink: #04122b;
+  --secondary: #9db8ea;
+  --accent: #f6bd5f;
+  --success: #46c47c;
+  --warning: #f0a33a;
+  --danger: #ff7a6e;
+  --base: #07142b;
+  --surface: #0c1d3b;
+  --raised: #12284d;
+  --line: #22406f;
+  --ink: #eef3fc;
+  --body: #c5d2ea;
+  --muted: #95a7c8;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-primary: var(--primary);
+  --color-primary-ink: var(--primary-ink);
+  --color-secondary: var(--secondary);
+  --color-accent: var(--accent);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-base: var(--base);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-body: var(--body);
+  --color-muted: var(--muted);
+  --radius-card: var(--r-card);
+  --radius-button: var(--r-button);
+  --radius-input: var(--r-input);
+  --shadow-card: var(--sh-card);
+  --font-display: var(--font-display-stack);
+  --font-body: var(--font-body-stack);
+  --font-mono: var(--font-mono-stack);
+  --container-shell: var(--container-width);
+  --text-h1: var(--fs-h1);
+  --text-h2: var(--fs-h2);
+  --text-h3: var(--fs-h3);
+  --text-h4: var(--fs-h4);
+  --text-h5: var(--fs-h5);
+  --text-h6: var(--fs-h6);
+}
+
+html {
+  background: var(--base);
+  color: var(--body);
+  font-family: var(--font-body-stack);
+  font-size: var(--fs-base);
+  -webkit-text-size-adjust: 100%;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+@layer base {
+/* Heading ladder: H1 > H2 > ... > H6 on every screen size. */
+.site h1, .site h2, .site h3, .site h4, .site h5, .site h6 {
+  font-family: var(--font-display-stack);
+  color: var(--ink);
+  letter-spacing: var(--heading-tracking);
+  line-height: 1.15;
+  font-weight: 650;
+  text-wrap: balance;
+}
+.site h1 { font-size: var(--fs-h1); }
+.site h2 { font-size: var(--fs-h2); }
+.site h3 { font-size: var(--fs-h3); }
+.site h4 { font-size: var(--fs-h4); }
+.site h5 { font-size: var(--fs-h5); }
+.site h6 { font-size: var(--fs-h6); }
+}
+
+@layer components {
+/* Buttons follow the Brand button style (data-buttons on <html>). */
+.btn {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: var(--r-button);
+  border: var(--border-width) solid transparent;
+  padding: 0 1.25rem;
+  font-weight: 600;
+  transition: background-color var(--motion-speed), color var(--motion-speed), border-color var(--motion-speed);
+}
+.btn-primary { background: var(--primary); color: var(--primary-ink); }
+.btn-primary:hover { background: color-mix(in srgb, var(--primary) 88%, var(--ink)); }
+[data-buttons='outline'] .btn-primary { background: transparent; color: var(--primary); border-color: var(--primary); }
+[data-buttons='outline'] .btn-primary:hover { background: color-mix(in srgb, var(--primary) 10%, transparent); }
+[data-buttons='soft'] .btn-primary { background: color-mix(in srgb, var(--primary) 14%, var(--surface)); color: var(--ink); }
+.btn-ghost { border-color: var(--line); color: var(--ink); background: transparent; }
+.btn-ghost:hover { background: var(--raised); }
+
+/* Rich text inside blocks. */
+.prose-site { max-width: 70ch; }
+.prose-site > * + * { margin-top: 1em; }
+.prose-site a { color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
+.prose-site ul { list-style: disc; padding-left: 1.25em; }
+.prose-site ol { list-style: decimal; padding-left: 1.25em; }
+.prose-site h2, .prose-site h3, .prose-site h4 { margin-top: 1.6em; }
+.prose-site blockquote { border-left: 3px solid var(--primary); padding-left: 1em; color: var(--ink); }
+.prose-site code { font-family: var(--font-mono-stack); font-size: 0.9em; background: var(--raised); padding: 0.1em 0.35em; border-radius: 4px; }
+
+/* Text on coloured section backgrounds stays readable. */
+[data-bg='primary'] :is(h1, h2, h3, h4, h5, h6), [data-bg='secondary'] :is(h1, h2, h3, h4, h5, h6), [data-bg='ink'] :is(h1, h2, h3, h4, h5, h6) { color: inherit; }
+[data-bg='primary'] .btn-primary { background: var(--primary-ink); color: var(--primary); }
+[data-bg='primary'] .btn-ghost, [data-bg='secondary'] .btn-ghost, [data-bg='ink'] .btn-ghost { color: inherit; border-color: currentColor; }
+[data-bg='primary'] .prose-site a { color: inherit; }
+}
+
+/* Scroll reveal: only when motion is on and the visitor has not asked for reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  [data-motion='on'] [data-animate]:not([data-shown]) { opacity: 0; }
+  [data-motion='on'] [data-animate='fade-up']:not([data-shown]) { transform: translateY(16px); }
+  [data-motion='on'] [data-animate='zoom']:not([data-shown]) { transform: scale(0.97); }
+  [data-motion='on'] [data-animate] { transition: opacity calc(var(--motion-speed) * 2.4) ease, transform calc(var(--motion-speed) * 2.4) ease; }
+}
+
+/* Carousels pad their scroll area so card shadows and badges are never clipped. */
+.carousel-track {
+  display: flex;
+  gap: 1.25rem;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  padding: 1rem;
+  margin: -1rem;
+}
+.carousel-track::-webkit-scrollbar { display: none; }
+.carousel-track > * { scroll-snap-align: start; flex: 0 0 auto; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@layer components {
+  /* Rich text from the article editor. */
+  .prose-site figure img { border-radius: var(--r-card); width: 100%; height: auto; }
+  .prose-site figcaption { margin-top: 0.5em; font-size: 0.875em; color: var(--muted); text-align: center; }
+  .prose-site pre { overflow-x: auto; background: var(--raised); padding: 1em; border-radius: var(--r-input); font-family: var(--font-mono-stack); font-size: 0.875em; }
+  .prose-site pre code { background: none; padding: 0; }
+  .prose-site hr { border-color: var(--line); margin: 2em 0; }
+  .prose-site h2, .prose-site h3, .prose-site h4 { scroll-margin-top: 6rem; }
+  .rt-embed { position: relative; aspect-ratio: 16 / 9; }
+  .rt-embed iframe { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: var(--r-card); border: 0; }
+  .rt-table { overflow-x: auto; }
+  .rt-table table { width: 100%; border-collapse: collapse; }
+  .rt-table th, .rt-table td { border: var(--border-width) solid var(--line); padding: 0.5em 0.75em; text-align: left; vertical-align: top; }
+  .rt-table th { background: var(--raised); color: var(--ink); }
+  .rt-callout { border-left: 4px solid var(--primary); background: var(--raised); padding: 1em 1.25em; border-radius: var(--r-input); color: var(--ink); }
+  .rt-callout[data-tone='success'] { border-color: var(--success); }
+  .rt-callout[data-tone='warning'] { border-color: var(--warning); }
+  .rt-callout[data-tone='danger'] { border-color: var(--danger); }
+  .ProseMirror p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: var(--muted); float: left; height: 0; pointer-events: none; }
+  .ProseMirror table { width: 100%; border-collapse: collapse; }
+  .ProseMirror td, .ProseMirror th { border: 1px solid var(--line); padding: 0.4em; }
+}
+
+/* Printing the resume: no header, footer or floating buttons, black text on white. */
+@media print {
+  .site > header, .site > footer, .site [data-print='hide'], .site > a[href='#main'] { display: none !important; }
+  html, body, .site { background: #fff !important; color: #000 !important; }
+  .site h1, .site h2, .site h3 { color: #000 !important; }
+  .site main a { color: #000 !important; text-decoration: none; }
+}

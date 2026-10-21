@@ -1,0 +1,128 @@
+import { defineResource } from '@/lib/admin/resource';
+import { SEO_FIELDS, slugField, statusFields } from '@/lib/admin/common-fields';
+
+export const storeCategoriesResource = defineResource({
+  id: 'shop-categories',
+  label: 'Category',
+  labelPlural: 'Shop categories',
+  description: 'Groups of products. Buyers can filter the shop by category.',
+  module: 'store',
+  area: 'shop',
+  model: 'storeCategory',
+  entity: 'storeCategory',
+  nav: { group: 'Shop', label: 'Shop categories' },
+  titleField: 'name',
+  slugField: 'slug',
+  duplicate: { unique: ['slug'] },
+  mediaColumns: ['image'],
+  defaults: { name: '', slug: '', order: 0 },
+  fields: [
+    { name: 'name', label: 'Name', type: 'text', required: true, maxLength: 80, info: 'Shown in the shop filter, for example "T-shirts".' },
+    slugField('name', '/shop?category='),
+    { name: 'description', label: 'Description', type: 'textarea', maxLength: 400, info: 'Shown above the products when this category is chosen.' },
+    { name: 'image', label: 'Image', type: 'image', width: 'half', info: 'An optional picture for the category.' },
+    { name: 'order', label: 'Order', type: 'number', min: 0, max: 999, width: 'half', info: 'Lower numbers show first.' },
+  ],
+  columns: [
+    { field: 'name', label: 'Category', kind: 'title', sortable: true },
+    { field: 'order', label: 'Order', kind: 'number', sortable: true },
+    { field: 'updatedAt', label: 'Updated', kind: 'date', sortable: true },
+  ],
+  searchFields: ['name', 'slug'],
+  defaultSort: { field: 'order', dir: 'asc' },
+  quickEdit: ['name', 'order'],
+});
+
+export const productsResource = defineResource({
+  id: 'products',
+  label: 'Product',
+  labelPlural: 'Products',
+  description: 'What you sell in the shop: physical goods and digital downloads, with options, stock and tax.',
+  module: 'store',
+  area: 'shop',
+  model: 'storeProduct',
+  entity: 'storeProduct',
+  nav: { group: 'Shop' },
+  titleField: 'name',
+  slugField: 'slug',
+  statusField: 'status',
+  duplicate: { unique: ['slug'], reset: ['featured'] },
+  publicPath: '/shop/{slug}',
+  mediaColumns: ['images', 'body', 'digitalFiles'],
+  defaults: { name: '', slug: '', status: 'DRAFT', kind: 'physical', currency: 'USD', price: 0, trackStock: true, startStock: 0, lowStockAt: 0, weightGrams: 0, taxClass: 'standard', options: [], variants: [], digitalFiles: [], downloadLimit: 5, downloadDays: 0, images: [], featured: false, order: 0 },
+  tabs: ['Content', 'Price', 'Options', 'Stock', 'Digital', 'Media', 'SEO', 'Social', 'Schema', 'Advanced'],
+  fields: [
+    { name: 'name', label: 'Name', type: 'text', required: true, maxLength: 120, info: 'The product name buyers see.' },
+    slugField('name', '/shop/'),
+    ...statusFields(false),
+    { name: 'kind', label: 'Type', type: 'segmented', required: true, options: [{ value: 'physical', label: 'Physical (shipped)' }, { value: 'digital', label: 'Digital (download)' }], info: 'Physical products need an address and shipping. Digital products are downloaded after payment and need no shipping.' },
+    { name: 'summary', label: 'Short description', type: 'textarea', maxLength: 300, info: 'One or two sentences shown on product cards and in search results.' },
+    { name: 'body', label: 'Description', type: 'richtext', info: 'The full description: what it is, sizes, materials, what is included.' },
+    { name: 'categoryId', label: 'Category', type: 'relation', relation: { resource: 'shop-categories' }, width: 'half', info: 'Where the product appears when buyers filter the shop.' },
+    { name: 'featured', label: 'Featured', type: 'switch', width: 'half', info: 'Featured products come first in the shop.' },
+    { name: 'order', label: 'Order', type: 'number', min: 0, max: 999, width: 'half', info: 'Lower numbers show first.' },
+
+    { name: 'price', label: 'Price', type: 'money', required: true, currency: 'currency', tab: 'Price', width: 'half', info: 'The price before tax (or including it, if Settings > Payments says prices include tax). Variants can have their own price.' },
+    { name: 'comparePrice', label: 'Compare at price', type: 'money', currency: 'currency', tab: 'Price', width: 'half', info: 'An old price shown crossed out next to the real one, for sales. Leave empty for none.' },
+    { name: 'currency', label: 'Currency', type: 'text', maxLength: 3, readOnly: true, tab: 'Price', width: 'half', info: 'Always the store currency from Settings > Store. It is set for you when you save.' },
+    { name: 'taxClass', label: 'Tax class', type: 'text', required: true, maxLength: 30, tab: 'Price', width: 'half', info: 'The id of a tax class from Settings > Store, for example standard.' },
+
+    {
+      name: 'options', label: 'Option', type: 'repeater', tab: 'Options',
+      info: 'Things buyers choose, such as Size or Colour. Each combination becomes a variant with its own stock. Up to three options and 100 variants. After saving, the variants appear below to set a SKU, price or picture for each.',
+      fields: [
+        { name: 'name', label: 'Option name', type: 'text', required: true, maxLength: 40, width: 'half', info: 'For example Size.' },
+        { name: 'values', label: 'Choices', type: 'tags', required: true, width: 'half', info: 'For example S, M, L. Press Enter after each one.' },
+      ],
+    },
+    {
+      name: 'variants', label: 'Variant', type: 'repeater', tab: 'Options',
+      info: 'One row per combination of options. Do not add or remove rows here: they follow your options when you save. Stock is changed in Shop > Inventory.',
+      fields: [
+        { name: 'key', label: 'Key', type: 'text', readOnly: true, maxLength: 200, width: 'half', info: 'Which combination this row is. Set by the system.' },
+        { name: 'label', label: 'Combination', type: 'text', readOnly: true, maxLength: 200, width: 'half', info: 'The choices this variant stands for.' },
+        { name: 'sku', label: 'SKU', type: 'text', maxLength: 60, width: 'half', info: 'Your own code for this variant.' },
+        { name: 'price', label: 'Price', type: 'money', currency: 'currency', width: 'half', info: 'Leave empty to use the product price.' },
+        { name: 'image', label: 'Picture', type: 'image', width: 'half', info: 'Shown when a buyer picks this variant.' },
+        { name: 'active', label: 'Sold', type: 'switch', width: 'half', info: 'Switch off to stop selling this combination.' },
+      ],
+    },
+
+    { name: 'sku', label: 'SKU', type: 'text', maxLength: 60, tab: 'Stock', width: 'half', info: 'Your own code for the product, used when it has no options.' },
+    { name: 'trackStock', label: 'Track stock', type: 'switch', tab: 'Stock', width: 'half', info: 'On: the shop stops selling at zero. Off: always available (made to order, or services).' },
+    { name: 'startStock', label: 'Starting stock', type: 'number', min: 0, max: 1_000_000, tab: 'Stock', width: 'half', showIf: { field: 'trackStock', equals: true }, info: 'How many you have now, for a product without options. Used once, when the product is first saved. After that, change stock in Shop > Inventory.' },
+    { name: 'lowStockAt', label: 'Low stock level', type: 'number', min: 0, max: 1_000_000, tab: 'Stock', width: 'half', showIf: { field: 'trackStock', equals: true }, info: 'You get an email and buyers can see "only a few left" at or below this number. 0 means only when sold out.' },
+    { name: 'weightGrams', label: 'Weight (grams)', type: 'number', min: 0, max: 1_000_000, tab: 'Stock', width: 'half', showIf: { field: 'kind', equals: 'physical' }, info: 'Used by shipping rates priced by weight.' },
+
+    {
+      name: 'digitalFiles', label: 'File', type: 'repeater', tab: 'Digital', showIf: { field: 'kind', equals: 'digital' },
+      info: 'The files buyers get after paying. They are shown on the order page, not on the product page. Use a file from the media library or a link.',
+      fields: [
+        { name: 'name', label: 'Name', type: 'text', required: true, maxLength: 120, width: 'half', info: 'What the buyer sees, for example "User guide (PDF)".' },
+        { name: 'url', label: 'File', type: 'file', required: true, accept: 'any', width: 'half', info: 'Pick from the media library, or paste a link that starts with https://.' },
+      ],
+    },
+    { name: 'downloadLimit', label: 'Downloads allowed per file', type: 'number', min: 0, max: 1000, tab: 'Digital', width: 'half', showIf: { field: 'kind', equals: 'digital' }, info: 'How many times a buyer can download each file. 0 means no limit.' },
+    { name: 'downloadDays', label: 'Days downloads stay open', type: 'number', min: 0, max: 3650, tab: 'Digital', width: 'half', showIf: { field: 'kind', equals: 'digital' }, info: 'Counted from the day of payment. 0 means they never close.' },
+
+    { name: 'images', label: 'Pictures', type: 'gallery', tab: 'Media', accept: 'image', info: 'The first picture is the main one. Every picture needs a description (alt text) in the media library.' },
+    ...SEO_FIELDS,
+  ],
+  columns: [
+    { field: 'name', label: 'Product', kind: 'title', sortable: true },
+    { field: 'status', label: 'Status', kind: 'status' },
+    { field: 'kind', label: 'Type', kind: 'text', sortable: true },
+    { field: 'price', label: 'Price', kind: 'money', sortable: true },
+    { field: 'featured', label: 'Featured', kind: 'boolean', hiddenByDefault: true },
+    { field: 'order', label: 'Order', kind: 'number', sortable: true, hiddenByDefault: true },
+    { field: 'updatedAt', label: 'Updated', kind: 'date', sortable: true },
+  ],
+  searchFields: ['name', 'sku', 'summary'],
+  filters: [
+    { field: 'status', label: 'Status', options: [{ value: 'DRAFT', label: 'Draft' }, { value: 'PUBLISHED', label: 'Published' }] },
+    { field: 'kind', label: 'Type', options: [{ value: 'physical', label: 'Physical' }, { value: 'digital', label: 'Digital' }] },
+  ],
+  defaultSort: { field: 'order', dir: 'asc' },
+  quickEdit: ['name', 'status', 'featured', 'order'],
+  csv: { columns: ['name', 'slug', 'status', 'kind', 'price', 'currency', 'sku', 'taxClass', 'weightGrams', 'order'], importKey: 'slug' },
+});

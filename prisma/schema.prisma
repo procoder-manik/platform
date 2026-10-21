@@ -1,0 +1,918 @@
+// Phase 0: core models only. Module models are added in their own phases
+// (see the Database schema section of the build specification).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------- shared enums ----------
+enum Status {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+}
+
+enum Billing {
+  ONE_TIME
+  MONTHLY
+  YEARLY
+  HOURLY
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  VERIFYING
+  PAID
+  IN_PROGRESS
+  COMPLETED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+  FAILED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  EXPIRED
+  CANCELLED
+}
+
+enum UserKind {
+  STAFF
+  CUSTOMER
+}
+
+// ---------- core ----------
+
+/// One record per settings group (brand, modules, site, seo...). Merged over code defaults at read time.
+model Setting {
+  key       String   @id
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
+/// API keys saved in the admin. value is AES-256-GCM ciphertext, never plain text.
+model Secret {
+  name      String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  name            String?
+  passwordHash    String?
+  kind            UserKind  @default(CUSTOMER)
+  /// Staff role id: administrator | editor | shop | author | a custom Role id
+  role            String?
+  emailVerified   DateTime?
+  avatar          String?
+  blocked         Boolean   @default(false)
+  twoFactorSecret String?
+  /// Account credit in minor units (cents)
+  credit          Int       @default(0)
+  referralCode    String?   @unique
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  accounts  Account[]
+  sessions  Session[]
+  revisions Revision[]
+  auditLogs AuditLog[]
+  posts     Post[]
+  orders    Order[]
+  subscriptions Subscription[]
+  phone     String?
+  lastLoginAt DateTime?
+  addresses Address[]
+  wishlist  WishlistItem[]
+  /// Author profile shown under posts.
+  bio       String?
+
+  @@index([kind])
+}
+
+/// Auth.js OAuth accounts (Google sign-in, later phases).
+model Account {
+  id                String  @id @default(uuid())
+  userId            String
+  type              String  @default("oidc")
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+/// Server-side sessions. The signed cookie only carries sessionToken; deleting the row signs the user out everywhere.
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  ip           String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expires])
+}
+
+/// Magic links and email verification (later phases).
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+/// Custom staff roles. Built-in roles live in code (src/lib/auth/roles.ts).
+model Role {
+  id    String   @id
+  label String
+  areas String[]
+}
+
+model Media {
+  id        String   @id @default(uuid())
+  url       String
+  provider  String
+  key       String
+  mime      String
+  size      Int
+  width     Int?
+  height    Int?
+  alt       String?
+  caption   String?
+  /// Focal point for crops, { x, y } from 0 to 1.
+  focal     Json?
+  folder    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([folder])
+  @@index([createdAt])
+}
+
+model Page {
+  id           String     @id @default(uuid())
+  title        String
+  slug         String     @unique
+  blocks       Json
+  status       Status     @default(DRAFT)
+  publishAt    DateTime?
+  isHome       Boolean    @default(false)
+  template     String?
+  seo          Json?
+  showInFooter Boolean    @default(false)
+  deletedAt    DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([status])
+  @@index([deletedAt])
+}
+
+/// Generic history for any content type (entity = "page", "post", "product"...). No foreign key on entityId,
+/// so one table serves every module. See docs/DECISIONS.md.
+model Revision {
+  id        String   @id @default(uuid())
+  entity    String
+  entityId  String
+  data      Json
+  userId    String?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entity, entityId, createdAt])
+}
+
+/// Reusable saved blocks.
+model GlobalSection {
+  id        String   @id @default(uuid())
+  name      String
+  blocks    Json
+  updatedAt DateTime @updatedAt
+}
+
+model Redirect {
+  id     String  @id @default(uuid())
+  from   String  @unique
+  to     String
+  code   Int     @default(301)
+  match  String  @default("exact")
+  hits   Int     @default(0)
+  active Boolean @default(true)
+}
+
+/// Addresses visitors asked for that did not exist, for the redirect tool.
+model NotFoundHit {
+  id       String   @id @default(uuid())
+  path     String   @unique
+  hits     Int      @default(1)
+  lastAt   DateTime @default(now())
+  referrer String?
+
+  @@index([lastAt])
+  @@index([hits])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  diff      Json?
+  ip        String?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+model EmailLog {
+  id        String   @id @default(uuid())
+  to        String
+  template  String
+  subject   String
+  ok        Boolean
+  error     String?
+  entity    String?
+  entityId  String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+// ---------- content modules (Phase 3) ----------
+
+model Category {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  description String?
+  color       String?
+  order       Int      @default(0)
+  seo         Json?
+  posts       Post[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+}
+
+model Post {
+  id          String    @id @default(uuid())
+  title       String
+  slug        String    @unique
+  excerpt     String?
+  cover       String?
+  /// Tiptap JSON. bodyHtml is rendered from it on save.
+  body        Json
+  bodyHtml    String?
+  /// "article" or "update" (a short post).
+  kind        String    @default("article")
+  tags        String[]
+  authorId    String?
+  author      User?     @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  /// Builder sections shown after the article.
+  afterBlocks Json?
+  aiMeta      Json?
+  featured    Boolean   @default(false)
+  readingMinutes Int    @default(1)
+  status      Status    @default(DRAFT)
+  publishAt   DateTime?
+  publishedAt DateTime?
+  seo         Json?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, publishedAt])
+  @@index([categoryId])
+  @@index([authorId])
+  @@index([deletedAt])
+}
+
+model Project {
+  id           String    @id @default(uuid())
+  title        String
+  slug         String    @unique
+  client       String?
+  industry     String?
+  summary      String?
+  body         Json?
+  bodyHtml     String?
+  liveUrl      String?
+  bannerImage  String?
+  /// Tall full-page screenshot for the hover-scroll card.
+  scrollImage  String?
+  gallery      String[]
+  platform     String?
+  technologies String[]
+  services     String[]
+  /// [{ label, value }]
+  results      Json?
+  /// { url, title }
+  video        Json?
+  accent       String?
+  featured     Boolean   @default(false)
+  order        Int       @default(0)
+  status       Status    @default(PUBLISHED)
+  seo          Json?
+  deletedAt    DateTime?
+  caseStudies  CaseStudy[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([status, order])
+  @@index([deletedAt])
+}
+
+model CaseStudy {
+  id        String    @id @default(uuid())
+  title     String
+  slug      String    @unique
+  client    String?
+  summary   String?
+  problem   Json?
+  approach  Json?
+  results   Json?
+  /// [{ label, value }]
+  metrics   Json?
+  cover     String?
+  projectId String?
+  project   Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  status    Status    @default(DRAFT)
+  seo       Json?
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([status])
+  @@index([deletedAt])
+}
+
+model AppProduct {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  tagline   String?
+  logo      String?
+  url       String?
+  body      Json?
+  bodyHtml  String?
+  inFooter  Boolean  @default(true)
+  order     Int      @default(0)
+  status    Status   @default(PUBLISHED)
+  seo       Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model Testimonial {
+  id        String   @id @default(uuid())
+  name      String
+  role      String?
+  company   String?
+  quote     String
+  avatar    String?
+  rating    Int?
+  order     Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+// ---------- services, checkout, orders (Phase 5) ----------
+
+model Service {
+  id           String    @id @default(uuid())
+  name         String
+  slug         String    @unique
+  summary      String?
+  icon         String?
+  /// Questions asked at checkout: [{ label, kind, required, options }].
+  requirements Json      @default("[]")
+  order        Int       @default(0)
+  active       Boolean   @default(true)
+  packages     Package[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @default(now()) @updatedAt
+
+  @@index([active, order])
+}
+
+model Package {
+  id                String   @id @default(uuid())
+  serviceId         String
+  service           Service  @relation(fields: [serviceId], references: [id])
+  name              String
+  slug              String   @unique
+  tagline           String?
+  /// Minor units (cents). For monthly plans this is the monthly price.
+  price             Int
+  priceMax          Int?
+  currency          String   @default("USD")
+  billing           Billing  @default(ONE_TIME)
+  monthlyYearly     Boolean  @default(false)
+  yearlyDiscountPct Int      @default(0)
+  yearlyPrice       Int?
+  /// "buy" goes to checkout, "quote" goes to the contact form.
+  mode              String   @default("buy")
+  deliveryDays      Int?
+  features          String[]
+  popular           Boolean  @default(false)
+  active            Boolean  @default(true)
+  order             Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @default(now()) @updatedAt
+
+  subscriptions Subscription[]
+
+  @@index([serviceId, order])
+  @@index([active])
+}
+
+model Order {
+  id              String      @id @default(uuid())
+  /// Looks like WL-261019-K7QX (prefix from Payment settings).
+  number          String      @unique
+  /// Long random value that unlocks the private order page.
+  token           String      @unique
+  userId          String?
+  user            User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  email           String
+  customer        Json
+  status          OrderStatus @default(PENDING_PAYMENT)
+  currency        String
+  subtotal        Int
+  discount        Int         @default(0)
+  shipping        Int         @default(0)
+  tax             Int         @default(0)
+  total           Int
+  methodId        String?
+  affiliateId     String?
+  referrerId      String?
+  /// Set on the first order of a subscription and on every renewal order.
+  subscriptionId  String?
+  subscription    Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  shippingAddress Json?
+  billingAddress  Json?
+  requirements    Json?
+  /// Private notes only staff see: [{ at, by, text }].
+  notes           Json?
+  /// Progress updates and files the customer sees: [{ at, by, text, fileUrl, fileName }].
+  updates         Json?
+  /// Status changes: [{ at, by, from, to, note }].
+  history         Json
+  invoiceNumber   String?     @unique
+  paidAt          DateTime?
+  items           OrderItem[]
+  payments        Payment[]
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  terms           SubscriptionTerm[]
+
+  @@index([status, createdAt])
+  @@index([email])
+  @@index([userId])
+  @@index([subscriptionId])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id        String @id @default(uuid())
+  orderId   String
+  order     Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  /// "package" now; "product" and "variant" arrive with the store.
+  kind      String
+  refId     String
+  title     String
+  sku       String?
+  quantity  Int
+  unitPrice Int
+  /// The package or product exactly as sold.
+  snapshot  Json
+
+  @@index([orderId])
+}
+
+model Payment {
+  id             String   @id @default(uuid())
+  orderId        String
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  /// stripe, paypal, sslcommerz, bkash, nagad, rocket, bank, wise, payoneer
+  provider       String
+  /// pending, submitted, paid, verified, rejected, failed, mismatch, refunded
+  status         String
+  amount         Int
+  currency       String
+  reference      String?
+  proof          Json?
+  raw            Json?
+  idempotencyKey String?  @unique
+  createdAt      DateTime @default(now())
+
+  @@index([orderId])
+  @@index([provider, status])
+}
+
+/// A recurring plan bought from a package. It renews by invoice: shortly before the end a renewal order is
+/// created and the customer pays it like any other order (see docs/DECISIONS.md, D82).
+model Subscription {
+  id                 String             @id @default(uuid())
+  /// Looks like SUB-261020-K7QX.
+  number             String             @unique
+  /// Long random value that unlocks the private manage page.
+  token              String             @unique
+  userId             String?
+  user               User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  email              String
+  customer           Json
+  packageId          String?
+  package            Package?           @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  /// Plan name as sold, for example "Care plan: Pro".
+  title              String
+  /// monthly or yearly.
+  period             String
+  status             SubscriptionStatus @default(ACTIVE)
+  currency           String
+  /// Price of one term in minor units, before tax. Locked at purchase unless Settings > Subscriptions says to follow the package.
+  amount             Int
+  /// Day of the month the plan renews on (1 to 31), so a plan started on the 31st stays on the last day of shorter months.
+  anchorDay          Int
+  startedAt          DateTime
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  /// The customer (or staff) asked it not to renew: it ends on currentPeriodEnd.
+  cancelAtPeriodEnd  Boolean            @default(false)
+  cancelledAt        DateTime?
+  endedAt            DateTime?
+  /// Number of paid renewals (the first term is not a renewal).
+  renewals           Int                @default(0)
+  /// The package as sold: [{ package, service, period }].
+  snapshot           Json
+  /// Changes: [{ at, by, from, to, note }].
+  history            Json
+  /// Private notes only staff see: [{ at, by, text }].
+  notes              Json?
+  /// Reminders already sent, so none goes out twice: ["<period end ISO>:<days>"].
+  remindersSent      String[]
+  orders             Order[]
+  terms              SubscriptionTerm[]
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@index([status, currentPeriodEnd])
+  @@index([email])
+  @@index([userId])
+  @@index([packageId])
+}
+
+/// One paid (or staff-granted) term of a subscription. The unique order id means a repeated paid event
+/// can never extend a subscription twice.
+model SubscriptionTerm {
+  id             String       @id @default(uuid())
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  orderId        String?      @unique
+  order          Order?       @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  /// first, renewal, restart, grant (free days from staff) or manual (added by staff, paid outside the site)
+  kind           String
+  periodStart    DateTime
+  periodEnd      DateTime
+  amount         Int
+  createdAt      DateTime     @default(now())
+
+  @@index([subscriptionId, periodEnd])
+}
+
+// ---------- store (Phase 7) ----------
+
+model StoreCategory {
+  id          String         @id @default(uuid())
+  name        String
+  slug        String         @unique
+  description String?
+  image       String?
+  order       Int            @default(0)
+  seo         Json?
+  products    StoreProduct[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @default(now()) @updatedAt
+}
+
+/// A product for sale. Every product has at least one ProductVariant (a simple product has one with an empty key),
+/// and stock lives on the variant so it can be changed atomically.
+model StoreProduct {
+  id            String          @id @default(uuid())
+  name          String
+  slug          String          @unique
+  status        Status          @default(DRAFT)
+  /// physical or digital
+  kind          String          @default("physical")
+  summary       String?
+  body          Json?
+  bodyHtml      String?
+  images        String[]
+  categoryId    String?
+  category      StoreCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  /// Minor units. Variants can override it.
+  price         Int
+  comparePrice  Int?
+  currency      String          @default("USD")
+  sku           String?
+  trackStock    Boolean         @default(true)
+  /// Stock for a product without options, used once when the product is first saved.
+  startStock    Int             @default(0)
+  lowStockAt    Int             @default(0)
+  weightGrams   Int             @default(0)
+  /// Id of a tax class in Settings > Store.
+  taxClass      String          @default("standard")
+  /// [{ name, values[] }]
+  options       Json            @default("[]")
+  /// Per variant settings shown in the editor: [{ key, label, sku, price, active, image }]
+  variants      Json            @default("[]")
+  /// [{ name, url }] for digital products.
+  digitalFiles  Json            @default("[]")
+  downloadLimit Int             @default(5)
+  downloadDays  Int             @default(0)
+  featured      Boolean         @default(false)
+  order         Int             @default(0)
+  seo           Json?
+  publishedAt   DateTime?
+  items         ProductVariant[]
+  wishlisted    WishlistItem[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @default(now()) @updatedAt
+
+  @@index([status, order])
+  @@index([categoryId])
+}
+
+model ProductVariant {
+  id        String          @id @default(uuid())
+  productId String
+  product   StoreProduct    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  /// "Size=M|Color=Red" in option order; empty for a product without options.
+  key       String
+  label     String
+  sku       String?
+  /// Minor units; empty means the product price.
+  price     Int?
+  stock     Int             @default(0)
+  active    Boolean         @default(true)
+  image     String?
+  order     Int             @default(0)
+  movements StockMovement[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @default(now()) @updatedAt
+
+  @@unique([productId, key])
+  @@index([sku])
+}
+
+/// Every change to stock, with the balance after it. The unique key makes sale and release records idempotent.
+model StockMovement {
+  id        String         @id @default(uuid())
+  variantId String
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  delta     Int
+  balance   Int
+  /// initial, sale, release, adjust, restock
+  reason    String
+  orderId   String?
+  note      String?
+  by        String?
+  createdAt DateTime       @default(now())
+
+  @@unique([orderId, variantId, reason])
+  @@index([variantId, createdAt])
+}
+
+/// How many times one file of a paid order was downloaded.
+model DownloadGrant {
+  id        String    @id @default(uuid())
+  orderId   String
+  itemId    String
+  fileIndex Int
+  count     Int       @default(0)
+  lastAt    DateTime?
+
+  @@unique([orderId, itemId, fileIndex])
+}
+
+// ---------- coupons, referrals and affiliates (Phase 8) ----------
+
+/// A discount code. Redemptions are counted when an order is placed and given back if it is cancelled.
+model Coupon {
+  id               String             @id @default(uuid())
+  /// Upper case letters, numbers, dash and underscore.
+  code             String             @unique
+  description      String?
+  /// percent, fixed or free_shipping
+  kind             String
+  percent          Int?
+  /// Minor units, for kind "fixed".
+  amount           Int?
+  /// all, services or products
+  scope            String             @default("all")
+  minSubtotal      Int?
+  /// Cap for a percent coupon, minor units.
+  maxDiscount      Int?
+  startsAt         DateTime?
+  endsAt           DateTime?
+  usageLimit       Int?
+  perCustomerLimit Int?
+  firstOrderOnly   Boolean            @default(false)
+  active           Boolean            @default(true)
+  usedCount        Int                @default(0)
+  /// manual or referral (a reward made for a referrer)
+  origin           String             @default("manual")
+  /// When set, only this email may use the code.
+  ownerEmail       String?
+  redemptions      CouponRedemption[]
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @default(now()) @updatedAt
+
+  @@index([active, endsAt])
+}
+
+model CouponRedemption {
+  id        String   @id @default(uuid())
+  couponId  String
+  coupon    Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  code      String
+  orderId   String   @unique
+  email     String
+  amount    Int
+  createdAt DateTime @default(now())
+
+  @@index([couponId, email])
+}
+
+/// A customer's own code to share. One per email, made after their first paid order.
+model ReferralCode {
+  id        String     @id @default(uuid())
+  code      String     @unique
+  email     String     @unique
+  name      String?
+  clicks    Int        @default(0)
+  referrals Referral[]
+  createdAt DateTime   @default(now())
+}
+
+model Referral {
+  id             String       @id @default(uuid())
+  codeId         String
+  codeRef        ReferralCode @relation(fields: [codeId], references: [id], onDelete: Cascade)
+  code           String
+  referrerEmail  String
+  friendEmail    String
+  orderId        String       @unique
+  /// pending, rewarded or void
+  status         String       @default("pending")
+  /// What the friend saved, minor units.
+  discount       Int          @default(0)
+  rewardCouponId String?
+  rewardedAt     DateTime?
+  note           String?
+  createdAt      DateTime     @default(now())
+
+  @@index([referrerEmail])
+  @@index([friendEmail])
+  @@index([status])
+}
+
+model Affiliate {
+  id            String       @id @default(uuid())
+  name          String
+  email         String       @unique
+  code          String       @unique
+  /// Long random value for the private dashboard.
+  token         String       @unique
+  /// pending, active or paused
+  status        String       @default("pending")
+  /// Empty uses the default in Settings > Affiliates.
+  commissionPct Float?
+  clicks        Int          @default(0)
+  website       String?
+  payoutDetails String?
+  notes         String?
+  commissions   Commission[]
+  payouts       Payout[]
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @default(now()) @updatedAt
+
+  @@index([status])
+}
+
+model Commission {
+  id          String    @id @default(uuid())
+  affiliateId String
+  affiliate   Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  orderId     String    @unique
+  orderNumber String
+  /// What the commission is worked out on: products or services after discounts, without tax and shipping.
+  base        Int
+  rate        Float
+  amount      Int
+  currency    String
+  /// pending (waiting out the hold), approved, paid or void
+  status      String    @default("pending")
+  approveAt   DateTime
+  payoutId    String?
+  payout      Payout?   @relation(fields: [payoutId], references: [id], onDelete: SetNull)
+  note        String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+
+  @@index([affiliateId, status])
+  @@index([status, approveAt])
+}
+
+model Payout {
+  id          String       @id @default(uuid())
+  affiliateId String
+  affiliate   Affiliate    @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  amount      Int
+  currency    String
+  method      String?
+  reference   String?
+  note        String?
+  by          String?
+  commissions Commission[]
+  createdAt   DateTime     @default(now())
+
+  @@index([affiliateId, createdAt])
+}
+
+// ---------- customer accounts (Phase 9) ----------
+
+/// A delivery address a customer saved. At most one is the default.
+model Address {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label     String?
+  name      String
+  line1     String
+  line2     String   @default("")
+  city      String
+  region    String   @default("")
+  postal    String   @default("")
+  country   String
+  phone     String
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([userId])
+}
+
+model WishlistItem {
+  id        String       @id @default(uuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   StoreProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+
+  @@unique([userId, productId])
+}
+
+// ---------- email template overrides (Phase 10) ----------
+
+/// A customised subject and body for one email template id. Falls back to the code default (EMAIL_TEMPLATES)
+/// for anything not overridden, so Ids and placeholders never need to change.
+model EmailTemplateOverride {
+  templateId String   @id
+  subject    String
+  body       String
+  updatedBy  String?
+  updatedAt  DateTime @default(now()) @updatedAt
+}
+
